@@ -96,19 +96,23 @@ class TdEnv(gym.Env):
 
         # CASE 1: LONG POSITION
         if(action == 1):
+            print("LONG")
             self.data['Position'][t] = 1
             # Case a: Long -> Long
             if(self.data['Position'][t - 1] == 1):
+                print("    long->long")
                 self.data['Cash'][t] = self.data['Cash'][t - 1]
                 self.data['Holdings'][t] = self.numberOfShares * self.data['Close'][t]
             # Case b: No position -> Long
             elif(self.data['Position'][t - 1] == 0):
+                print("    No position->long")
                 self.numberOfShares = math.floor(self.data['Cash'][t - 1]/(self.data['Close'][t] * (1 + self.transactionCosts)))
                 self.data['Cash'][t] = self.data['Cash'][t - 1] - self.numberOfShares * self.data['Close'][t] * (1 + self.transactionCosts)
                 self.data['Holdings'][t] = self.numberOfShares * self.data['Close'][t]
                 self.data['Action'][t] = 1
             # Case c: Short -> Long
             else:
+                print("    short->long")
                 self.data['Cash'][t] = self.data['Cash'][t - 1] - self.numberOfShares * self.data['Close'][t] * (1 + self.transactionCosts)
                 self.numberOfShares = math.floor(self.data['Cash'][t]/(self.data['Close'][t] * (1 + self.transactionCosts)))
                 self.data['Cash'][t] = self.data['Cash'][t] - self.numberOfShares * self.data['Close'][t] * (1 + self.transactionCosts)
@@ -117,9 +121,11 @@ class TdEnv(gym.Env):
 
         # CASE 2: SHORT POSITION
         elif(action == 0):
+            print("SHORT")
             self.data['Position'][t] = -1
             # Case a: Short -> Short
             if(self.data['Position'][t - 1] == -1):
+                print("    short->short")
                 lowerBound = self.computeLowerBound(self.data['Cash'][t - 1], -numberOfShares, self.data['Close'][t-1])
                 if lowerBound <= 0:
                     self.data['Cash'][t] = self.data['Cash'][t - 1]
@@ -132,12 +138,14 @@ class TdEnv(gym.Env):
                     customReward = True
             # Case b: No position -> Short
             elif(self.data['Position'][t - 1] == 0):
+                print("    no position->short")
                 self.numberOfShares = math.floor(self.data['Cash'][t - 1]/(self.data['Close'][t] * (1 + self.transactionCosts)))
                 self.data['Cash'][t] = self.data['Cash'][t - 1] + self.numberOfShares * self.data['Close'][t] * (1 - self.transactionCosts)
                 self.data['Holdings'][t] = - self.numberOfShares * self.data['Close'][t]
                 self.data['Action'][t] = -1
             # Case c: Long -> Short
             else:
+                print("    long->short")
                 self.data['Cash'][t] = self.data['Cash'][t - 1] + self.numberOfShares * self.data['Close'][t] * (1 - self.transactionCosts)
                 self.numberOfShares = math.floor(self.data['Cash'][t]/(self.data['Close'][t] * (1 + self.transactionCosts)))
                 self.data['Cash'][t] = self.data['Cash'][t] + self.numberOfShares * self.data['Close'][t] * (1 - self.transactionCosts)
@@ -146,6 +154,7 @@ class TdEnv(gym.Env):
 
         # CASE 3: HOLD ACTION
         elif(action == 2):
+            print("HOLD")
             self.data['Cash'][t] = self.data['Cash'][t - 1]
             self.data['Holdings'][t] = self.data['Holdings'][t-1]
             self.data['Action'][t] = 2

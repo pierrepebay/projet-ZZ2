@@ -174,7 +174,7 @@ def optimize_model():
 if torch.cuda.is_available():
     num_episodes = 600
 else:
-    num_episodes = 50
+    num_episodes = 1
 
 for i_episode in range(num_episodes):
     print("\n")
@@ -184,6 +184,7 @@ for i_episode in range(num_episodes):
     state = env.reset()
     state = torch.tensor([item for sublist in state for item in sublist], dtype=torch.float32, device=device).unsqueeze(0)
     for t in count():
+        print("{} _____ {} __ {}".format(env.data['Cash'][t], env.numberOfShares, env.data['Holdings'][t]))
         action = select_action(state)
         observation, reward, terminated, truncated = env.step(action.item())
         reward = torch.tensor([reward], device=device)
