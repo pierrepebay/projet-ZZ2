@@ -24,12 +24,17 @@ class TdEnv(gym.Env):
         self.data.fillna(0, inplace=True)
         
         # Set the trading activity dataframe
-        self.data['Position'] = 0
-        self.data['Action'] = 0
-        self.data['Holdings'] = 0.
-        self.data['Cash'] = float(money)
-        self.data['Money'] = self.data['Holdings'] + self.data['Cash']
-        self.data['Returns'] = 0.
+        self.dataLength = len(self.data['Close'])+length
+        self.position = np.array([0] * self.dataLength)
+        self.action = np.array([0] * self.dataLength)
+        self.holdings = np.array([0.] * self.dataLength)
+        self.cash = np.array([float(money)] * self.dataLength)
+        self.money = np.array([0. + float(money)] * self.dataLength)
+        self.returns = np.array([0.] * self.dataLength)
+
+        # Set info variables
+        self.nbought = 0
+        self.nsold = 0
 
         # Set the RL variables common to every OpenAI gym environments
         self.state = [self.data['Open'][0:length].tolist(),
@@ -49,16 +54,38 @@ class TdEnv(gym.Env):
         self.transactionCosts = transactionCosts
         self.epsilon = 0.1
 
+    def getCash(self):
+        return self.cash[self.t]
+    
+    def getNShares(self):
+        return self.numberOfShares
+    
+    def getHoldings(self):
+        return self.holdings[self.t]
+    
+    def getReturns(self):
+        return self.returns[self.t]
+    
+    def getPositionString(self):
+        v = self.position[self.t]
+        if v == 0:
+            return "Hold"
+        elif(v == 1):
+            return "Bought"
+        elif(v == -1):
+            return "Sold"
+        else:
+            return "Something went wrong"
 
     def reset(self):
 
         # Reset the trading activity dataframe
-        self.data['Position'] = 0
-        self.data['Action'] = 0
-        self.data['Holdings'] = 0.
-        self.data['Cash'] = self.data['Cash'][0]
-        self.data['Money'] = self.data['Holdings'] + self.data['Cash']
-        self.data['Returns'] = 0.
+        self.position = [0] * self.dataLength
+        self.action = [0] * self.dataLength
+        self.holdings = [0.] * self.dataLength
+        self.cash = [self.cash[0]] * self.dataLength
+        self.money = [0. + self.cash[0]] * self.dataLength
+        self.returns = [0.] * self.dataLength
 
         # Reset the RL variables common to every OpenAI gym environments
         self.state = [self.data['Open'][0:self.length].tolist(),
@@ -94,81 +121,45 @@ class TdEnv(gym.Env):
         numberOfShares = self.numberOfShares
         customReward = False
 
-        # CASE 1: LONG POSITION
-        if(action == 1):
-            print("LONG")
-            self.data['Position'][t] = 1
-            # Case a: Long -> Long
-            if(self.data['Position'][t - 1] == 1):
-                print("    long->long")
-                self.data['Cash'][t] = self.data['Cash'][t - 1]
-                self.data['Holdings'][t] = self.numberOfShares * self.data['Close'][t]
-            # Case b: No position -> Long
-            elif(self.data['Position'][t - 1] == 0):
-                print("    No position->long")
-                self.numberOfShares = math.floor(self.data['Cash'][t - 1]/(self.data['Close'][t] * (1 + self.transactionCosts)))
-                self.data['Cash'][t] = self.data['Cash'][t - 1] - self.numberOfShares * self.data['Close'][t] * (1 + self.transactionCosts)
-                self.data['Holdings'][t] = self.numberOfShares * self.data['Close'][t]
-                self.data['Action'][t] = 1
-            # Case c: Short -> Long
-            else:
-                print("    short->long")
-                self.data['Cash'][t] = self.data['Cash'][t - 1] - self.numberOfShares * self.data['Close'][t] * (1 + self.transactionCosts)
-                self.numberOfShares = math.floor(self.data['Cash'][t]/(self.data['Close'][t] * (1 + self.transactionCosts)))
-                self.data['Cash'][t] = self.data['Cash'][t] - self.numberOfShares * self.data['Close'][t] * (1 + self.transactionCosts)
-                self.data['Holdings'][t] = self.numberOfShares * self.data['Close'][t]
-                self.data['Action'][t] = 1
+        # CASE 1: BUY
+        if(action == 1 and self.position[t - 1] == 0):   
+            # Case: No position -> Buy
+            self.nbought += 1
+            self.position[t] = 1
+            self.numberOfShares = math.floor(self.cash[t - 1]/(self.data['Close'][t] * (1 + self.transactionCosts)))
+            self.cash[t] = self.cash[t - 1] - self.numberOfShares * self.data['Close'][t] * (1 + self.transactionCosts)
+            self.holdings[t] = self.numberOfShares * self.data['Close'][t]
+            self.action[t] = 1
 
-        # CASE 2: SHORT POSITION
-        elif(action == 0):
-            print("SHORT")
-            self.data['Position'][t] = -1
-            # Case a: Short -> Short
-            if(self.data['Position'][t - 1] == -1):
-                print("    short->short")
-                lowerBound = self.computeLowerBound(self.data['Cash'][t - 1], -numberOfShares, self.data['Close'][t-1])
-                if lowerBound <= 0:
-                    self.data['Cash'][t] = self.data['Cash'][t - 1]
-                    self.data['Holdings'][t] =  - self.numberOfShares * self.data['Close'][t]
-                else:
-                    numberOfSharesToBuy = min(math.floor(lowerBound), self.numberOfShares)
-                    self.numberOfShares -= numberOfSharesToBuy
-                    self.data['Cash'][t] = self.data['Cash'][t - 1] - numberOfSharesToBuy * self.data['Close'][t] * (1 + self.transactionCosts)
-                    self.data['Holdings'][t] =  - self.numberOfShares * self.data['Close'][t]
-                    customReward = True
-            # Case b: No position -> Short
-            elif(self.data['Position'][t - 1] == 0):
-                print("    no position->short")
-                self.numberOfShares = math.floor(self.data['Cash'][t - 1]/(self.data['Close'][t] * (1 + self.transactionCosts)))
-                self.data['Cash'][t] = self.data['Cash'][t - 1] + self.numberOfShares * self.data['Close'][t] * (1 - self.transactionCosts)
-                self.data['Holdings'][t] = - self.numberOfShares * self.data['Close'][t]
-                self.data['Action'][t] = -1
-            # Case c: Long -> Short
-            else:
-                print("    long->short")
-                self.data['Cash'][t] = self.data['Cash'][t - 1] + self.numberOfShares * self.data['Close'][t] * (1 - self.transactionCosts)
-                self.numberOfShares = math.floor(self.data['Cash'][t]/(self.data['Close'][t] * (1 + self.transactionCosts)))
-                self.data['Cash'][t] = self.data['Cash'][t] + self.numberOfShares * self.data['Close'][t] * (1 - self.transactionCosts)
-                self.data['Holdings'][t] = - self.numberOfShares * self.data['Close'][t]
-                self.data['Action'][t] = -1
+        # CASE 2: SELL (FROM BUY)
+        elif(action == 0 and self.position[t - 1] == 1):
+            # Case: Buy -> Sell
+            self.nsold += 1
+            self.position[t] = -1
+            self.cash[t] = self.cash[t - 1] + self.numberOfShares * self.data['Close'][t] * (1 - self.transactionCosts)
+            self.numberOfShares = math.floor(self.cash[t]/(self.data['Close'][t] * (1 + self.transactionCosts)))
+            self.cash[t] = self.cash[t] + self.numberOfShares * self.data['Close'][t] * (1 - self.transactionCosts)
+            self.holdings[t] = - self.numberOfShares * self.data['Close'][t]
+            self.action[t] = -1
 
         # CASE 3: HOLD ACTION
-        elif(action == 2):
-            print("HOLD")
-            self.data['Cash'][t] = self.data['Cash'][t - 1]
-            self.data['Holdings'][t] = self.data['Holdings'][t-1]
-            self.data['Action'][t] = 2
-
-        # CASE 4: PROHIBITED ACTION
         else:
-            raise SystemExit("Prohibited action! Action should be either 1 (long) or 0 (short).")
+            self.position[t] = 0
+            self.cash[t] = self.cash[t - 1]
+            self.holdings[t] = self.numberOfShares * self.data['Close'][t]
+            self.action[t] = 2
+
+        #print("Cash: ",self.cash[t])
+        #print("Shares: ",self.numberOfShares)
+        #print("Holdings: ",self.holdings[t])
 
         # Update the total amount of money owned by the agent, as well as the return generated
-        self.data['Money'][t] = self.data['Holdings'][t] + self.data['Cash'][t]
-        self.data['Returns'][t] = (self.data['Money'][t] - self.data['Money'][t-1])/self.data['Money'][t-1]
+        self.money[t] = self.holdings[t] + self.cash[t]
+        self.returns[t] = (self.money[t] - self.money[t-1])/self.money[t-1]
 
         # Set the RL reward returned to the trading agent
-        self.reward = self.data['Returns'][t]
+        self.reward = self.returns[t]
+        #print("<> Reward: {}".format(self.reward))
 
         # Transition to the next trading time step
         self.t = self.t + 1
@@ -177,61 +168,12 @@ class TdEnv(gym.Env):
                       self.data['Low'][self.t - self.length : self.t].tolist(),
                       self.data['Close'][self.t - self.length : self.t].tolist(),
                       self.data['Volume'][self.t - self.length : self.t].tolist(),
-                      [self.data['Position'][self.t -1]]]
+                      [self.position[self.t -1]]]
         if(self.t == self.data.shape[0]):
             self.done = 1  
 
-        # Same reasoning with the other action (exploration trick)
-        otherAction = int(not bool(action))
-        customReward = False
-        if(otherAction == 1):
-            otherPosition = 1
-            if(self.data['Position'][t - 1] == 1):
-                otherCash = self.data['Cash'][t - 1]
-                otherHoldings = numberOfShares * self.data['Close'][t]
-            elif(self.data['Position'][t - 1] == 0):
-                numberOfShares = math.floor(self.data['Cash'][t - 1]/(self.data['Close'][t] * (1 + self.transactionCosts)))
-                otherCash = self.data['Cash'][t - 1] - numberOfShares * self.data['Close'][t] * (1 + self.transactionCosts)
-                otherHoldings = numberOfShares * self.data['Close'][t]
-            else:
-                otherCash = self.data['Cash'][t - 1] - numberOfShares * self.data['Close'][t] * (1 + self.transactionCosts)
-                numberOfShares = math.floor(otherCash/(self.data['Close'][t] * (1 + self.transactionCosts)))
-                otherCash = otherCash - numberOfShares * self.data['Close'][t] * (1 + self.transactionCosts)
-                otherHoldings = numberOfShares * self.data['Close'][t]
-        else:
-            otherPosition = -1
-            if(self.data['Position'][t - 1] == -1):
-                lowerBound = self.computeLowerBound(self.data['Cash'][t - 1], -numberOfShares, self.data['Close'][t-1])
-                if lowerBound <= 0:
-                    otherCash = self.data['Cash'][t - 1]
-                    otherHoldings =  - numberOfShares * self.data['Close'][t]
-                else:
-                    numberOfSharesToBuy = min(math.floor(lowerBound), numberOfShares)
-                    numberOfShares -= numberOfSharesToBuy
-                    otherCash = self.data['Cash'][t - 1] - numberOfSharesToBuy * self.data['Close'][t] * (1 + self.transactionCosts)
-                    otherHoldings =  - numberOfShares * self.data['Close'][t]
-                    customReward = True
-            elif(self.data['Position'][t - 1] == 0):
-                numberOfShares = math.floor(self.data['Cash'][t - 1]/(self.data['Close'][t] * (1 + self.transactionCosts)))
-                otherCash = self.data['Cash'][t - 1] + numberOfShares * self.data['Close'][t] * (1 - self.transactionCosts)
-                otherHoldings = - numberOfShares * self.data['Close'][t]
-            else:
-                otherCash = self.data['Cash'][t - 1] + numberOfShares * self.data['Close'][t] * (1 - self.transactionCosts)
-                numberOfShares = math.floor(otherCash/(self.data['Close'][t] * (1 + self.transactionCosts)))
-                otherCash = otherCash + numberOfShares * self.data['Close'][t] * (1 - self.transactionCosts)
-                otherHoldings = - self.numberOfShares * self.data['Close'][t]
-        otherMoney = otherHoldings + otherCash
-        if not customReward:
-            otherReward = (otherMoney - self.data['Money'][t-1])/self.data['Money'][t-1]
-        else:
-            otherReward = (self.data['Close'][t-1] - self.data['Close'][t])/self.data['Close'][t-1]
-        otherState = [self.data['Open'][self.t - self.length : self.t].tolist(),
-                      self.data['High'][self.t - self.length : self.t].tolist(),
-                      self.data['Low'][self.t - self.length : self.t].tolist(),
-                      self.data['Close'][self.t - self.length : self.t].tolist(),
-                      self.data['Volume'][self.t - self.length : self.t].tolist(),
-                      [otherPosition]]
-        self.info = {'State' : otherState, 'Reward' : otherReward, 'Done' : self.done}
+        self.info = None
 
         # Return the trading environment feedback to the RL trading agent
         return self.state, self.reward, self.done, self.info
+    

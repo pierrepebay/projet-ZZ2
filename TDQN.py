@@ -10,15 +10,26 @@ import matplotlib.pyplot as plt
 from collections import namedtuple, deque
 from itertools import count
 import time
+import os
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 
+import yfinance as yf
+
+numberOfNeurons = 512
+dropout = 0.2
+
 # Load the stock data from a file and create the environment
 data = np.loadtxt('test.csv', delimiter=',')
 data=pd.read_csv("AAPL_stock_sample/AAPL_1hour_sample.txt", sep=",", header=None, names=["DateTime", "Open", "High", "Low", "Close", "Volume"])
+
+aapl = yf.Ticker("AAPL")
+data = aapl.history(period="1y", interval="1d")
+
+
 env = TdEnv.TdEnv(data, 10000)
 
 Transition = namedtuple('Transition',
@@ -42,18 +53,43 @@ class ReplayMemory(object):
 
 class DQN(nn.Module):
 
-    def __init__(self, n_observations, n_actions):
+    def __init__(self, n_observations, n_actions, numberOfNeurons=numberOfNeurons, dropout=dropout):
         super(DQN, self).__init__()
-        self.layer1 = nn.Linear(n_observations, 128)
-        self.layer2 = nn.Linear(128, 128)
-        self.layer3 = nn.Linear(128, n_actions)
+        # Definition of some Fully Connected layers
+        self.fc1 = nn.Linear(n_observations, numberOfNeurons)
+        self.fc2 = nn.Linear(numberOfNeurons, numberOfNeurons)
+        self.fc3 = nn.Linear(numberOfNeurons, numberOfNeurons)
+        self.fc4 = nn.Linear(numberOfNeurons, numberOfNeurons)
+        self.fc5 = nn.Linear(numberOfNeurons, n_actions)
+
+        # Definition of some Batch Normalization layers
+        self.bn1 = nn.BatchNorm1d(numberOfNeurons)
+        self.bn2 = nn.BatchNorm1d(numberOfNeurons)
+        self.bn3 = nn.BatchNorm1d(numberOfNeurons)
+        self.bn4 = nn.BatchNorm1d(numberOfNeurons)
+
+        # Definition of some Dropout layers.
+        self.dropout1 = nn.Dropout(dropout)
+        self.dropout2 = nn.Dropout(dropout)
+        self.dropout3 = nn.Dropout(dropout)
+        self.dropout4 = nn.Dropout(dropout)
+
+        # Xavier initialization for the entire neural network
+        torch.nn.init.xavier_uniform_(self.fc1.weight)
+        torch.nn.init.xavier_uniform_(self.fc2.weight)
+        torch.nn.init.xavier_uniform_(self.fc3.weight)
+        torch.nn.init.xavier_uniform_(self.fc4.weight)
+        torch.nn.init.xavier_uniform_(self.fc5.weight)
 
     # Called with either one element to determine next action, or a batch
     # during optimization. Returns tensor([[left0exp,right0exp]...]).
-    def forward(self, x):
-        x = F.relu(self.layer1(x))
-        x = F.relu(self.layer2(x))
-        return self.layer3(x)
+    def forward(self, input):
+        x = self.dropout1(F.leaky_relu(self.bn1(self.fc1(input))))
+        x = self.dropout2(F.leaky_relu(self.bn2(self.fc2(x))))
+        x = self.dropout3(F.leaky_relu(self.bn3(self.fc3(x))))
+        x = self.dropout4(F.leaky_relu(self.bn4(self.fc4(x))))
+        output = self.fc5(x)
+        return output
 
 # if gpu is to be used
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -83,6 +119,8 @@ elif gym.__version__[:4] == '0.25':
 n_observations = len([item for sublist in state for item in sublist])
 policy_net = DQN(n_observations, n_actions).to(device)
 target_net = DQN(n_observations, n_actions).to(device)
+policy_net.eval()
+target_net.eval()
 target_net.load_state_dict(policy_net.state_dict())
 
 optimizer = optim.AdamW(policy_net.parameters(), lr=LR, amsgrad=True)
@@ -172,11 +210,14 @@ def optimize_model():
     optimizer.step()
 
 if torch.cuda.is_available():
-    num_episodes = 600
+    num_episodes = 2000
 else:
-    num_episodes = 1
+    num_episodes = 50
+
+cash_list = []
 
 for i_episode in range(num_episodes):
+    os.system('clear')
     print("\n")
     print("##### Episode number {} #####".format(i_episode))
     print("\n")
@@ -184,11 +225,19 @@ for i_episode in range(num_episodes):
     state = env.reset()
     state = torch.tensor([item for sublist in state for item in sublist], dtype=torch.float32, device=device).unsqueeze(0)
     for t in count():
-        print("{} _____ {} __ {}".format(env.data['Cash'][t], env.numberOfShares, env.data['Holdings'][t]))
+        #os.system('clear')
+        # print("\n")
+        # print("##### Episode number {} #####".format(i_episode))
+        # print("\n")
+        policy_net.train()
+        print("  t = {}  {} ___ {} ___ {} ___ {} \n".format(env.t, env.getCash(), env.getNShares(), env.getHoldings(), env.getPositionString()))
+        policy_net.eval()
         action = select_action(state)
+        print(action.item())
         observation, reward, terminated, truncated = env.step(action.item())
         reward = torch.tensor([reward], device=device)
         done = terminated
+        policy_net.train()
 
         if terminated:
             next_state = None
@@ -211,12 +260,15 @@ for i_episode in range(num_episodes):
         for key in policy_net_state_dict:
             target_net_state_dict[key] = policy_net_state_dict[key]*TAU + target_net_state_dict[key]*(1-TAU)
         target_net.load_state_dict(target_net_state_dict)
-
+        time.sleep(.5)
         if done:
-            print("Money = {}, Cash = {}, Holdings = {}".format(env.data['Money'].iloc[-1], env.data['Cash'].iloc[-1], env.data['Holdings'].iloc[-1]))
-            episode_durations.append(t + 1)
-            #plot_durations()
+            cash_list.append(env.getCash)
+            print("Cash = {}, Shares = {}, Holdings = {}\n\n".format(env.getCash(), env.getNShares(), env.getHoldings()))
+            print("Bought {} times, sold {} times.\n\n".format(env.nbought, env.nsold))
+            episode_durations.append(env.getCash())
+            plot_durations()
             break
-
+plt.plot(cash_list)
+plt.show()
 print('Complete')
 plt.show()
