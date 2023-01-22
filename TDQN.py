@@ -1,4 +1,5 @@
 import TdEnv
+import Constants
 
 import gym
 import math
@@ -20,17 +21,26 @@ import torch.nn.functional as F
 import yfinance as yf
 from artemis.plotting.db_plotting import dbplot
 
-import logging
+from alpha_vantage.timeseries import TimeSeries
+from pprint import pprint
+
+app_key = Constants.APP_KEY
 
 numberOfNeurons = 512
 dropout = 0.2
 
-# Load the stock data from a file and create the environment
-data = np.loadtxt('test.csv', delimiter=',')
-data=pd.read_csv("AAPL_stock_sample/AAPL_1hour_sample.txt", sep=",", header=None, names=["DateTime", "Open", "High", "Low", "Close", "Volume"])
+ts = TimeSeries(key=app_key, output_format='pandas')
+data, meta_data = ts.get_intraday(symbol='AAPL',interval='1min', outputsize='full')
+dict = {"1. open": "Open","2. high": "High", "3. low": "Low", "4. close": "Close", "5. volume": "Volume"}
+data.rename(columns=dict,
+          inplace=True)
 
-aapl = yf.Ticker("AAPL")
-data = aapl.history(period="1y", interval="1d")
+# # Load the stock data from a file and create the environment
+# data = np.loadtxt('test.csv', delimiter=',')
+# data=pd.read_csv("AAPL_stock_sample/AAPL_1hour_sample.txt", sep=",", header=None, names=["DateTime", "Open", "High", "Low", "Close", "Volume"])
+
+# aapl = yf.Ticker("AAPL")
+# data = aapl.history(period="1y", interval="1d")
 
 
 env = TdEnv.TdEnv(data, 10000)
