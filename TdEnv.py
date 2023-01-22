@@ -23,14 +23,16 @@ class TdEnv(gym.Env):
         self.data.fillna(method='bfill', inplace=True)
         self.data.fillna(0, inplace=True)
         
-        # Set the trading activity dataframe
+        # Set the trading activity data
         self.dataLength = len(self.data['Close'])+length
-        self.position = np.array([0] * self.dataLength)
-        self.action = np.array([0] * self.dataLength)
-        self.holdings = np.array([0.] * self.dataLength)
-        self.cash = np.array([float(money)] * self.dataLength)
-        self.money = np.array([0. + float(money)] * self.dataLength)
-        self.returns = np.array([0.] * self.dataLength)
+        self.position = np.array([0 for _ in range(self.dataLength)])
+        self.action = np.array([0 for _ in range(self.dataLength)])
+        self.holdings = np.array([0. for _ in range(self.dataLength)])
+        self.cash = np.array([float(money) for _ in range(self.dataLength)])
+        self.money = np.array([0. + float(money) for _ in range(self.dataLength)])
+        self.returns = np.array([0. for _ in range(self.dataLength)])
+        self.boughtAndHolding = False
+        self.soldAndHolding = True
 
         # Set info variables
         self.nbought = 0
@@ -62,6 +64,9 @@ class TdEnv(gym.Env):
     
     def getHoldings(self):
         return self.holdings[self.t]
+
+    def getMoney(self):
+        return self.money[self.t]
     
     def getReturns(self):
         return self.returns[self.t]
@@ -80,12 +85,14 @@ class TdEnv(gym.Env):
     def reset(self):
 
         # Reset the trading activity dataframe
-        self.position = [0] * self.dataLength
-        self.action = [0] * self.dataLength
-        self.holdings = [0.] * self.dataLength
-        self.cash = [self.cash[0]] * self.dataLength
-        self.money = [0. + self.cash[0]] * self.dataLength
-        self.returns = [0.] * self.dataLength
+        self.position = np.array([0 for _ in range(self.dataLength)])
+        self.action = np.array([0 for _ in range(self.dataLength)])
+        self.holdings = np.array([0. for _ in range(self.dataLength)])
+        self.cash = np.array([float(self.cash[0]) for _ in range(self.dataLength)])
+        self.money = np.array([0. + float(self.cash[0]) for _ in range(self.dataLength)])
+        self.returns = np.array([0. for _ in range(self.dataLength)])
+        self.boughtAndHolding = False
+        self.soldAndHolding = True
 
         # Reset the RL variables common to every OpenAI gym environments
         self.state = [self.data['Open'][0:self.length].tolist(),
@@ -100,6 +107,9 @@ class TdEnv(gym.Env):
         # Reset additional variables related to the trading activity
         self.t = self.length
         self.numberOfShares = 0
+
+        self.nbought = 0
+        self.nsold = 0
 
         return self.state
 
@@ -118,48 +128,55 @@ class TdEnv(gym.Env):
     def step(self, action):
 
         t = self.t
-        numberOfShares = self.numberOfShares
         customReward = False
 
         # CASE 1: BUY
-        if(action == 1 and self.position[t - 1] == 0):   
+        if(action == 1 and self.soldAndHolding):
             # Case: No position -> Buy
             self.nbought += 1
-            self.position[t] = 1
-            self.numberOfShares = math.floor(self.cash[t - 1]/(self.data['Close'][t] * (1 + self.transactionCosts)))
-            self.cash[t] = self.cash[t - 1] - self.numberOfShares * self.data['Close'][t] * (1 + self.transactionCosts)
-            self.holdings[t] = self.numberOfShares * self.data['Close'][t]
-            self.action[t] = 1
+            self.position[t + 1] = 1
+            self.numberOfShares = math.floor(self.cash[t]/(self.data['Close'][t + 1] * (1 + self.transactionCosts)))
+            self.cash[t + 1] = self.cash[t] - self.numberOfShares * self.data['Close'][t + 1] * (1 + self.transactionCosts)
+            self.holdings[t + 1] = self.numberOfShares * self.data['Close'][t + 1]
+            self.action[t + 1] = 1
+            self.boughtAndHolding = True
+            self.soldAndHolding = False
 
         # CASE 2: SELL (FROM BUY)
-        elif(action == 0 and self.position[t - 1] == 1):
+        elif(action == 0 and self.boughtAndHolding):
             # Case: Buy -> Sell
             self.nsold += 1
-            self.position[t] = -1
-            self.cash[t] = self.cash[t - 1] + self.numberOfShares * self.data['Close'][t] * (1 - self.transactionCosts)
-            self.numberOfShares = math.floor(self.cash[t]/(self.data['Close'][t] * (1 + self.transactionCosts)))
-            self.cash[t] = self.cash[t] + self.numberOfShares * self.data['Close'][t] * (1 - self.transactionCosts)
-            self.holdings[t] = - self.numberOfShares * self.data['Close'][t]
-            self.action[t] = -1
+            self.position[t + 1] = -1
+            self.cash[t + 1] = self.cash[t] + self.numberOfShares * self.data['Close'][t + 1] * (1 - self.transactionCosts)
+            self.numberOfShares = math.floor(self.cash[t]/(self.data['Close'][t + 1] * (1 + self.transactionCosts)))
+            self.holdings[t + 1] = - self.numberOfShares * self.data['Close'][t + 1]
+            self.action[t + 1] = -1
+            self.boughtAndHolding = False
+            self.soldAndHolding = True
 
         # CASE 3: HOLD ACTION
-        else:
-            self.position[t] = 0
-            self.cash[t] = self.cash[t - 1]
-            self.holdings[t] = self.numberOfShares * self.data['Close'][t]
-            self.action[t] = 2
+        elif(action == 2 and (self.boughtAndHolding or self.soldAndHolding)):
+            self.position[t + 1] = 0
+            self.cash[t + 1] = self.cash[t]
+            self.holdings[t + 1] = self.numberOfShares * self.data['Close'][t + 1]
+            self.action[t + 1] = 2
 
-        #print("Cash: ",self.cash[t])
-        #print("Shares: ",self.numberOfShares)
-        #print("Holdings: ",self.holdings[t])
+        # CASE 4: Action chosen isn't possible in current state (bought and wants to buy again, sell before buying, etc.)
+        else:
+            # A possibility here is to give a negative reward in order to avoide missing a step due to an impossible action
+            self.position[t + 1] = 0
+            self.cash[t + 1] = self.cash[t]
+            self.holdings[t + 1] = self.numberOfShares * self.data['Close'][t + 1]
+            self.action[t + 1] = action
+
+
 
         # Update the total amount of money owned by the agent, as well as the return generated
-        self.money[t] = self.holdings[t] + self.cash[t]
-        self.returns[t] = (self.money[t] - self.money[t-1])/self.money[t-1]
+        self.money[t + 1] = self.holdings[t + 1] + self.cash[t + 1]
+        self.returns[t + 1] = (self.money[t + 1] - self.money[t])/self.money[t]
 
         # Set the RL reward returned to the trading agent
-        self.reward = self.returns[t]
-        #print("<> Reward: {}".format(self.reward))
+        self.reward = self.returns[t + 1]
 
         # Transition to the next trading time step
         self.t = self.t + 1
@@ -169,7 +186,7 @@ class TdEnv(gym.Env):
                       self.data['Close'][self.t - self.length : self.t].tolist(),
                       self.data['Volume'][self.t - self.length : self.t].tolist(),
                       [self.position[self.t -1]]]
-        if(self.t == self.data.shape[0]):
+        if(self.t == self.data.shape[0] - 1):
             self.done = 1  
 
         self.info = None
