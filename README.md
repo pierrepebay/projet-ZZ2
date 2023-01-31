@@ -8,3 +8,5 @@ python TDQN.py
 ```
 
 A file `Constants.py` with the attribute `APP_KEY` which contains an Alpha Vantage API key is needed.
+
+To run the LSTM model : ./LSTM/Main.ipynb
