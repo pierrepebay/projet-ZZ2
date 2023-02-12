@@ -8,8 +8,7 @@ from typing import List, Tuple
 def get_train_val_test_idx_rolling(data: pd.DataFrame, n_train: int, n_val: int, 
                          n_test: int, rolling: int = 30) -> Tuple[List[pd.MultiIndex], List[pd.MultiIndex], List[pd.MultiIndex]]:
     """
-    This method is suited for time series and returns necessary indexes to perform model validation with a rw.
-    
+    This method is suited for time series and returns necessary indexes to perform model validation with a rolling window.
     Parameters
     ----------
     df : pd.DataFrame
@@ -25,7 +24,7 @@ def get_train_val_test_idx_rolling(data: pd.DataFrame, n_train: int, n_val: int,
     Returns
     -------
     train_idx, val_idx, test_idx : Tuple[List[pd.MultiIndex], List[pd.MultiIndex], List[pd.MultiIndex]]
-         Each list contains relevant indexes to consider for each cycle train-val-test 
+        Each list contains relevant indexes to consider for each cycle train-val-test 
     """
     train_idx = []
     val_idx = []
@@ -39,7 +38,7 @@ def get_train_val_test_idx_rolling(data: pd.DataFrame, n_train: int, n_val: int,
     for i in range(n_steps):
         train_idx.append(data[(rolling * i):(n_train + rolling * i)].index)
         val_idx.append(data[(n_train + rolling * i):(n_val + n_train + rolling * i)].index)
-        # Handle the case where we have not enough data to put rolling obs (30 by default) in the test set
+        # Handle the case where we didn't have enough data to put rolling obs (30 by default) in the test set
         if i == n_steps - 1 and (seq_length + rolling * i) > len(data):
             test_idx.append(data[(n_val + n_train + rolling * i):].index)
         else:
@@ -52,19 +51,18 @@ def get_train_val_test_idx_regular(data: pd.DataFrame, ratio_train: float,
         """
         This method is suited for time series and returns necessary indexes to perform model validation in a regular way, i.e.
         we have only one train, val and test
-
         Parameters
         ----------
         df : pd.DataFrame
-                Data for one given symbol on a given period 
+            Data for one given symbol on a given period 
         ratio_train : float
-                ratio of training samples on the entire series
+            ratio of training samples on the entire series
         ratio_val : float
-                ratio of validation samples on the entire series
+            ratio of validation samples on the entire series
         Returns
         -------
         train_idx, val_idx, test_idx : Tuple[List[pd.MultiIndex], List[pd.MultiIndex], List[pd.MultiIndex]]
-                Each list contains relevant indexes to consider for the split train-val-test 
+            Each list contains relevant indexes to consider for the split train-val-test 
         """
         assert 0 < (ratio_train + ratio_val) < 1, "The sum of ratio_train and ratio_val must be between 0 and 1 (bounds excluded)"
         train_idx = []
