@@ -5,6 +5,7 @@ from typing import List, Optional
 from Classes import *
 
 
+"""Work with a copy of the DataFrame to avoid changing the original DataFrame."""
 
 def standardize_feat_basket(data: pd.DataFrame, features_names: List[str], by: List[str]) -> pd.DataFrame:
     """
@@ -34,17 +35,17 @@ def add_return (data: pd.DataFrame, target: str, deltas: List[int],
     Parameters
     ----------
     df : pd.DataFrame
-         Dataframe with Multindex (Date, Symbol) and Open, High, Low, Close, Adj Close, Volume features
+        Dataframe with Multindex (Date, Symbol) and Open, High, Low, Close, Adj Close, Volume features
     target : str
-             Feature for which we want to compute returns
+        Feature for which we want to compute returns
     deltas : List[int]
-             List of Lags for which we compute the returns
+        List of Lags for which we compute the returns
     by : str
-         Feature linked to the groupby
+        Feature linked to the groupby
     Returns
     -------
     res : pd.DataFrame
-          Initial df with additionnal return features 
+        Initial df with additionnal return features 
     """
     res = data.copy()
     # Compute the returns
@@ -65,11 +66,11 @@ def binarize_label(data: pd.Series) -> pd.DataFrame:
     Parameters
     ----------
     df : pd.DataFrame
-         Dataframe with Multindex (Date, Symbol) and some features
+        Dataframe with Multindex (Date, Symbol) and some features
     Returns
     -------
     data : pd.DataFrame
-           Initial DataFrame with the binary feature added
+        Initial DataFrame with the binary feature added
     """
     data = data.groupby("ts").apply(lambda df: pd.Series((df > df.median()).astype(int), index=df.index))
     return data
