@@ -60,10 +60,12 @@ class LongShortTermMemory:
       Global dictionary which contain relevant sets of data like x_train, x_val, etc.
     """
     res = {}
+    # Features Data
     x_train = self.series.loc[train_idx[0]]
     x_val = self.series.loc[val_idx[0]]
     x_test = self.series.loc[test_idx[0]]
 
+    # Target Data
     y_train = self.y.loc[train_idx[0]]
     y_val = self.y.loc[val_idx[0]]
     y_test = self.y.loc[test_idx[0]]
@@ -234,5 +236,5 @@ class LongShortTermMemory:
     plt.xlabel('epoch')
 
     plt.legend(['train', 'validation'], loc='upper left')
-    
+
     plt.show()
