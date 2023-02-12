@@ -1,17 +1,3 @@
-
-"""
-from tensorflow.keras.layers import LSTM
-from tensorflow.keras.callbacks import EarlyStopping
-from tensorflow.keras.models import load_model
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, Dropout
-from tensorflow.keras.layers import Input, BatchNormalization
-from tensorflow.keras.utils import plot_model
-from tensorflow.keras.models import Model
-from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.initializers import RandomUniform, GlorotUniform, GlorotNormal
-from tensorflow.keras.models import load_model, model_from_json
-"""
 import tensorflow as tf
 from tensorflow import keras
 from keras import layers
@@ -31,7 +17,10 @@ from model_validation import get_train_val_test_idx_rolling, get_train_val_test_
 class LongShortTermMemory:
   def __init__(self, data: pd.DataFrame, label_fit: pd.Series, feature: str, symbol: str, 
                strategy_code: str, model_parameters: Dict[str, Any], save_path: str) -> None:
-    """Fit an LSTM on a given symbol. The data is assumed to be standardized with respect to the basket of stocks at each date"""
+    """
+    Fit an LSTM on a given symbol.
+    The data is assumed to be standardized with respect to the basket of stocks at each date
+    """
     self.symbol = symbol
     self.strategy_code = strategy_code
     self.model_parameters = model_parameters
@@ -44,15 +33,15 @@ class LongShortTermMemory:
   def split_series(self) -> Tuple[List[pd.MultiIndex], List[pd.MultiIndex], List[pd.MultiIndex]]:
     """
     Split the given time series in 3 sub series (train, val, test) according to the given ratios
+
     Returns
     -------
     train_idx, val_idx, test_idx : Tuple[List[pd.MultiIndex], List[pd.MultiIndex], List[pd.MultiIndex]]
-                                   Each list contains relevant indexes to extract the data in the original time series.
+      Each list contains relevant indexes to extract the data in the original time series.
     """
     ratio_train = self.model_parameters["split_ratio"]["train"]
     ratio_val = self.model_parameters["split_ratio"]["val"]
-    train_idx, val_idx, test_idx = get_train_val_test_idx_regular(data=self.series, ratio_train=ratio_train, 
-                                                            ratio_val=ratio_val)
+    train_idx, val_idx, test_idx = get_train_val_test_idx_regular(data=self.series, ratio_train=ratio_train, ratio_val=ratio_val)
     return train_idx, val_idx, test_idx
 
   def get_data(self, train_idx: List[pd.MultiIndex], val_idx: List[pd.MultiIndex], test_idx: List[pd.MultiIndex]) -> Dict[str, Dict[str, pd.Series]]:
@@ -60,15 +49,15 @@ class LongShortTermMemory:
     Parameters
     ----------
     train_idx : List[pd.MultiIndex]
-                Contain train indexes to extract in the original time series
+      Contain train indexes to extract in the original time series
     val_idx : List[pd.MultiIndex]
-                Contain val indexes to extract in the original time series  
+      Contain val indexes to extract in the original time series  
     test_idx : List[pd.MultiIndex]
-                Contain test indexes to extract in the original time series  
+      Contain test indexes to extract in the original time series  
     Returns
     -------
     res : Dict[str, Dict[str, pd.Series]]
-          Global dictionary which contain relevant sets of data like x_train, x_val, etc.
+      Global dictionary which contain relevant sets of data like x_train, x_val, etc.
     """
     res = {}
     x_train = self.series.loc[train_idx[0]]
@@ -92,16 +81,15 @@ class LongShortTermMemory:
     Parameters
     ----------
     sequence : np.array
-               time series representing a training, val or test set to split in sub sequences
+      time series representing a training, val or test set to split in sub sequences
     label : np.array
-               time series containing the labels (target) 
+      time series containing the labels (target) 
     n_steps :  int
-               Length of the sequence considered in input in the LSTM 
+      Length of the sequence considered in input in the LSTM 
     Returns
     -------
     np.vstack(X), np.vstack(y) : Tuple[np.array, np.array]
-                                 Containers of observations (each obs is a sequence of length 'n_steps')
-                                 
+      Containers of observations (each obs is a sequence of length 'n_steps')                           
     """
     # split a univariate sequence into samples (modified internet version)
     X, y = list(), list()
@@ -122,11 +110,11 @@ class LongShortTermMemory:
     Parameters
     ----------
     res : Dict[str, Dict[str, pd.Series]]
-          Global dictionary which contain relevant sets of data like x_train, x_val, etc.
+      Global dictionary which contain relevant sets of data like x_train, x_val, etc.
     Returns
     -------
     shaped_data : Dict[str, Dict[str, np.ndarray]]
-                  Returns a global dictionary containing the training, val and test set shaped to be passed in the LSTM
+      Returns a global dictionary containing the training, val and test set shaped to be passed in the LSTM
     """
     shaped_data = {}
     n_steps = self.model_parameters["n_steps"]
@@ -134,7 +122,7 @@ class LongShortTermMemory:
     trainX, trainY = LongShortTermMemory.create_samples(res["X"]["train"].values, res["y"]["train"].values, n_steps)
     validX, validY = LongShortTermMemory.create_samples(res["X"]["val"].values, res["y"]["val"].values, n_steps)
     testX,  testY = LongShortTermMemory.create_samples(res["X"]["test"].values,  res["y"]["test"].values, n_steps)
-    # reshape input to be [samples, time steps, features] (internet)
+    # reshape input to be [samples, time steps, features]
     n_features = 1
     trainX = trainX.reshape((trainX.shape[0], trainX.shape[1], n_features))
     validX = validX.reshape((validX.shape[0], validX.shape[1], n_features))
@@ -154,13 +142,16 @@ class LongShortTermMemory:
     Parameters
     ----------
     shaped_data : Dict[str, Dict[str, np.ndarray]]
-                  global dictionary containing the training, val and test set shaped to be passed in the LSTM
+      global dictionary containing the training, val and test set shaped to be passed in the LSTM
     """
     # Retrieve model hyperparameters and other
     n_steps = self.model_parameters["n_steps"]
+
     path_model = self.model_parameters["path_model"]
+
     early_stopp_patience = self.model_parameters["early_stopp_patience"]
     early_stopp = callbacks.EarlyStopping(monitor = 'val_loss', patience = early_stopp_patience)
+
     opt = self.model_parameters["optimizer"]
     metrics = self.model_parameters["metrics"]
     batch_size = self.model_parameters["batch_size"]
@@ -169,6 +160,7 @@ class LongShortTermMemory:
     recurrent_dropout = self.model_parameters["recurrent_dropout"]
     n_neurons = self.model_parameters["n_neurons"]
     kernel_init = self.model_parameters["kernel_init"]
+
     n_features = 1
 
     # create the LSTM network
@@ -178,8 +170,9 @@ class LongShortTermMemory:
     self.model.add(layers.Dropout(dropout))
     self.model.add(layers.Dense(1))
 
-    # Compile then Fit the model
+    # Compile the model
     self.model.compile(loss='binary_crossentropy', optimizer=opt, metrics=metrics)
+    # Fit the model
     self.h_callback = self.model.fit(shaped_data["X"]["train"], shaped_data["y"]["train"], epochs=epochs, batch_size=batch_size, 
                             verbose=2, validation_data = (shaped_data["X"]["val"], shaped_data["y"]["val"]), 
                             callbacks = [early_stopp])
@@ -187,21 +180,23 @@ class LongShortTermMemory:
       
   def load_lstm_model(self, path_model: str):
     """Load a trained model from a given path"""
-    # load json and create model (internet modified version)
+    # load json and create model
     json_file = open(f"{path_model}model_{self.symbol}.json", 'r')
     loaded_model_json = json_file.read()
     json_file.close()
     self.model = models.model_from_json(loaded_model_json)
+
     # load weights into new model
     self.model.load_weights(f"{path_model}weights_{self.symbol}.h5")
     print("Loaded model from disk")
   
   def save_lstm_model(self, path_model: str):
     """Save a trained model on a given path"""
-    # serialize model to JSON (internet modified version)
+    # serialize model to JSON
     model_json = self.model.to_json()
     with open(f"{path_model}model_{self.symbol}.json", "w") as json_file:
       json_file.write(model_json)
+
     # serialize weights to HDF5
     self.model.save_weights(f"{path_model}weights_{self.symbol}.h5")
     print("Saved model to disk")
@@ -212,9 +207,9 @@ class LongShortTermMemory:
     Parameters
     ----------
     testX : np.ndarray
-            Test data shaped as mentionned in the shape_data method
+      Test data shaped as mentionned in the shape_data method
     threshold : float
-                Set the threshold from which we make predictions in the LSTM
+      Set the threshold from which we make predictions in the LSTM
     """
     assert self.model is not None, "You must fit the model or load one before trying to make predictions"
     # Prediction of the model on the overall test set
@@ -229,10 +224,15 @@ class LongShortTermMemory:
     Display the learning and validation curves to monitor the training process and avoid overfitting
     """
     assert self.h_callback is not None, "You must fit the model before trying to print the results"
+
     plt.plot(self.h_callback.history['loss'])
     plt.plot(self.h_callback.history['val_loss'])
+
     plt.title('model loss')
+
     plt.ylabel('loss')
     plt.xlabel('epoch')
+
     plt.legend(['train', 'validation'], loc='upper left')
+    
     plt.show()
