@@ -3,8 +3,6 @@ from enum import Enum
 from typing import List, Dict, Union, Set
 import pandas as pd
 
-
-
 class Frequency(Enum):
   HOURLY = "Hourly"
   DAILY = "Daily"
@@ -13,6 +11,23 @@ class Frequency(Enum):
 class Quote:
   def __init__(self, symbol: str, open: float, high: float, low: float, 
                 close: float, adj_close: float, volume: int, ts: datetime, **kwargs) -> None:
+      """
+      Parameters
+      ----------
+      symbol: A string representing the symbol of a financial instrument.
+      open: A float representing the opening price of the financial instrument.
+      high: A float representing the highest price of the financial instrument.
+      low: A float representing the lowest price of the financial instrument.
+      close: A float representing the closing price of the financial instrument.
+      adj_close: A float representing the adjusted closing price of the financial instrument.
+      volume: An integer representing the trading volume of the financial instrument
+      ts: A datetime object representing the timestamp for the stock quote.
+      **kwargs: A catch-all for any additional keyword arguments that may be passed to the constructor.
+      Method
+      ------
+      __str__: returns a formatted string representation of the quote.
+      """
+
       self.symbol = symbol
       self.open = open
       self.high = high
@@ -72,8 +87,8 @@ class Config:
     return res        
 
 class PositionType(Enum):
-  LONG = 1
-  SHORT = 0
+  LONG  = 1    # BUY
+  SHORT = 0    # SELL
 
 class Position:
   def __init__(self, underlying_code: str, ts: datetime, value: PositionType):
@@ -117,11 +132,11 @@ class EquallyWeightedStrategy(BaseWeightComputation):
     Parameters
     ----------
     pos_list : List[Position]
-               List of position at a given time for different symbols
+      List of position at a given time for different symbols
     Returns
     -------
     count : int
-            Returns the number of assets that we hold in the ptf at a given time
+      Returns the number of assets that we hold in the ptf at a given time
     """
     count = 0
     for position in pos_list:
@@ -134,13 +149,13 @@ class EquallyWeightedStrategy(BaseWeightComputation):
     Parameters
     ----------
     pos_list : List[Position]
-               List of position at a given time for different symbols
+      List of position at a given time for different symbols
     ts : datetime
-         Date at which we want to compute weight
+      Date at which we want to compute weight
     Returns
     -------
     weight_list : List[Weight]
-                  Returns the list of weight for the considered symbols at this date
+      Returns the list of weight for the considered symbols at this date
     """
     nb_assets_ptf = EquallyWeightedStrategy.count_nb_asset_in_ptf(pos_list)
     weight_list = []
@@ -149,14 +164,16 @@ class EquallyWeightedStrategy(BaseWeightComputation):
         value = 1/nb_assets_ptf
       else:
         value = 0
+      
       w_tmp = Weight(
           product_code=self.strategy_code,
           underlying_code=position.underlying_code,
           ts=position.ts,
-          value=value
-      )
+          value=value)
+      
       key = (self.strategy_code, position.underlying_code, position.ts)
       self._weight_by_pk[key] = w_tmp
       weight_list.append(w_tmp)
+
     return weight_list
 
