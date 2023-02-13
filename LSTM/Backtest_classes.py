@@ -49,3 +49,69 @@ class PositionGenerator:
           quote_list.append(quote)
         date = date - self.config.timedelta
       return quote_list
+
+class Backtester:
+    """the backtest of the strategy"""
+    
+    def __init__(self, config: Config, quote_list: List[Quote], ml_predictions: Dict[str, Dict[datetime, int]]):
+      self._config = config
+      self._start_ts_backtest = config.start_ts_backtest
+      self._end_ts_backtest = config.end_ts_backtest
+      self._calendar = config.calendar
+      self._universe = config.universe 
+      self._timedelta = config.timedelta 
+      self._strategy = EquallyWeightedStrategy(config.strategy_code)
+      self._quote_by_pk = dict() 
+      self._generate_quotes_dict(quote_list)
+      self._pos_gen = PositionGenerator(self._quote_by_pk, ml_predictions, self._config)
+      self.perfs_list = []
+
+    def _generate_quotes_dict(self, quote_list: List[Quote]):
+      """Generate a quote dictionary with (symbol, ts) keys"""
+      for quote in quote_list:
+        underlying_code = quote.symbol
+        ts = quote.ts
+        self._quote_by_pk[(underlying_code, ts)] = quote
+    
+    def _get_start_date_predict(self):
+      """
+      Returns the date from which we start to make predictions                               
+      """
+      n_steps = self._config.model_parameters["n_steps"]
+      date = self._start_ts_backtest
+      count = 0
+      while count != n_steps + 1 and date <= self._end_ts_backtest:
+        # If it's a quotation day
+        if date in self._calendar:
+            count += 1
+        date = date + self._timedelta
+      return date - self._timedelta
+    
+    def _compute_perf(self, ts: datetime):
+      """Compute the performance of the portfolio at a given date"""
+      perf_ = 0
+      pos_list = self._pos_gen.compute_positions(ts)
+      weights_list = self._strategy.compute_weights(pos_list, ts)
+      for weight in weights_list:
+        underlying_code = weight.underlying_code
+        value = weight.value
+        current_quote = self._quote_by_pk.get((underlying_code, ts))
+        previous_quote =  self._pos_gen.get_previous_quotes(underlying_code=underlying_code, ts=ts, n_steps=1)[0]
+        if current_quote is not None and previous_quote is not None:
+          perf_ += value * (current_quote.close / previous_quote.close - 1)
+        else:
+          raise ValueError(f'missing quote for {underlying_code} at {ts} or the quote before')
+      return perf_
+    
+    def run_backtest(self):
+      """Main function of the backtester allowing us to compute the perf on the total trading period"""
+      perfs_list = []
+      tmp_date = self._get_start_date_predict()
+      while tmp_date <= self._end_ts_backtest:
+        # If it's a quotation day
+        if tmp_date in self._calendar:
+            perf = self._compute_perf(ts=tmp_date)
+            perfs_list.append(perf)
+        tmp_date = tmp_date + self._config.timedelta
+      self.perfs_list = perfs_list
+      return perfs_list
