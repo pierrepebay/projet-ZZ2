@@ -49,6 +49,28 @@ class PositionGenerator:
           quote_list.append(quote)
         date = date - self.config.timedelta
       return quote_list
+    
+    def compute_positions(self, ts: datetime) -> List[Position]:
+      """
+      Parameters
+      ----------
+      ts : Date for which we want to get positions
+      Returns
+      -------
+      pos_list : List[Position]
+        Returns a list of Position for the symbols contained in the portfolio at this time
+      """
+      pos_list = []
+      last_ts = self.config.get_last_market_date(ts=ts)
+      for underlying_code in self.config.universe:
+        if (underlying_code, ts) in self.quotes_by and (underlying_code, last_ts) in self.quotes_by:
+          y_pred = self.ml_predictions[underlying_code][ts]
+          if y_pred == 0:
+            pos = Position(underlying_code=underlying_code, ts=ts, value=PositionType.SHORT)
+          elif y_pred == 1:
+            pos = Position(underlying_code=underlying_code, ts=ts, value=PositionType.LONG)
+          pos_list.append(pos)
+      return pos_list
 
 class Backtester:
     """the backtest of the strategy"""
